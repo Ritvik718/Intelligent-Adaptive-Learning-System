@@ -1,24 +1,46 @@
+:root {
+  --bg-main: #0f172a;
+  --bg-card: rgba(255, 255, 255, 0.08);
+  --bg-glass: rgba(255, 255, 255, 0.12);
+
+  --text-main: #e5e7eb;
+  --text-muted: #9ca3af;
+
+  --accent: #6366f1;
+  --accent-glow: rgba(99, 102, 241, 0.5);
+
+  --border-soft: rgba(255, 255, 255, 0.15);
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
-  font-family: sans-serif;
   margin: 0;
-  background: #f8f9fa;
-  color: #222;
+  font-family: "Inter", system-ui, sans-serif;
+  background: radial-gradient(circle at top, #1e293b, #020617 70%);
+  color: var(--text-main);
 }
 
-.app {
-  text-align: center;
-  padding: 20px;
+a {
+  color: var(--text-main);
+  text-decoration: none;
 }
 
-.layout {
-  display: flex;
-  gap: 20px;
-  justify-content: center;
-  align-items: flex-start;
-  margin-top: 30px;
+button {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  border: none;
+  padding: 12px 18px;
+  color: white;
+  border-radius: 12px;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: 0 0 20px var(--accent-glow);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-canvas {
-  border-radius: 10px;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 30px var(--accent-glow);
 }

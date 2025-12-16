@@ -1,32 +1,36 @@
+import React from "react";
 import { Link } from "react-router-dom";
 
 export default function Landing() {
   return (
-    <div
-      style={{
-        minHeight: "80vh",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-        textAlign: "center",
-        padding: "40px",
-      }}
-    >
-      <h1>Intelligent Adaptive Learning System</h1>
-      <p style={{ maxWidth: "600px", marginTop: "10px" }}>
-        An AI-powered platform that adapts learning experiences in real time
-        based on user engagement and emotional state.
-      </p>
+    <div className="min-h-[90vh] flex items-center justify-center px-6">
+      <div className="max-w-4xl text-center">
+        {/* TITLE */}
+        <h1 className="text-5xl md:text-6xl font-extrabold tracking-tight text-indigo-400">
+          Intelligent Adaptive Learning System
+        </h1>
 
-      <div style={{ marginTop: "30px", display: "flex", gap: "20px" }}>
-        <Link to="/dashboard">
-          <button>Open Dashboard</button>
-        </Link>
+        {/* DESCRIPTION */}
+        <p className="mt-6 text-lg text-slate-300 leading-relaxed">
+          A real-time AI-driven learning platform that understands learner
+          engagement, emotion, and attention — and dynamically adapts content
+          for maximum effectiveness.
+        </p>
 
-        <Link to="/learning">
-          <button>Start Learning</button>
-        </Link>
+        {/* CTA BUTTONS */}
+        <div className="mt-10 flex flex-col sm:flex-row gap-6 justify-center">
+          <Link to="/learning">
+            <button className="px-8 py-3 rounded-xl bg-indigo-500 hover:bg-indigo-400 transition font-semibold text-slate-950 shadow-lg shadow-indigo-500/30">
+              Start Learning
+            </button>
+          </Link>
+
+          <Link to="/dashboard">
+            <button className="px-8 py-3 rounded-xl bg-slate-900/70 border border-white/10 hover:bg-slate-900 transition font-semibold text-slate-200 backdrop-blur">
+              Open Dashboard
+            </button>
+          </Link>
+        </div>
       </div>
     </div>
   );

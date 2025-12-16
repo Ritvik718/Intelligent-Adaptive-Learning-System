@@ -1,34 +1,56 @@
 class SessionTracker {
   constructor() {
-    this.engagementHistory = [];
-    this.emotionCounts = {};
+    this.engagements = [];
+    this.emotions = {};
     this.hints = [];
   }
 
+  // ---- ENGAGEMENT ----
   addEngagement(value) {
-    this.engagementHistory.push({
-      time: Date.now(),
-      value,
-    });
+    if (typeof value === "number" && !isNaN(value)) {
+      this.engagements.push(value);
+
+      // limit size to avoid memory leak
+      if (this.engagements.length > 200) {
+        this.engagements.shift();
+      }
+    }
   }
 
+  getEngagements() {
+    return [...this.engagements];
+  }
+
+  // ---- EMOTIONS ----
   addEmotion(emotion) {
-    this.emotionCounts[emotion] = (this.emotionCounts[emotion] || 0) + 1;
+    if (!emotion) return;
+
+    if (!this.emotions[emotion]) {
+      this.emotions[emotion] = 0;
+    }
+    this.emotions[emotion]++;
   }
 
-  addHint(reason = "low_engagement") {
+  getEmotions() {
+    return { ...this.emotions };
+  }
+
+  // ---- HINTS ----
+  addHint(type) {
     this.hints.push({
+      type,
       time: Date.now(),
-      reason,
     });
   }
 
-  getSummary() {
-    return {
-      engagementHistory: this.engagementHistory,
-      emotionCounts: this.emotionCounts,
-      hints: this.hints,
-    };
+  getHints() {
+    return [...this.hints];
+  }
+
+  reset() {
+    this.engagements = [];
+    this.emotions = {};
+    this.hints = [];
   }
 }
 
