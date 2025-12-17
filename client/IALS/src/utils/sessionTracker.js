@@ -1,56 +1,71 @@
 class SessionTracker {
   constructor() {
     this.engagements = [];
-    this.emotions = {};
+    this.emotions = [];
     this.hints = [];
+
+    // Quiz / interaction tracking (can be reused later)
+    this.quizAttempts = 0;
+    this.correctAnswers = 0;
+    this.wrongAnswers = 0;
   }
 
-  // ---- ENGAGEMENT ----
+  // ---------- ENGAGEMENT ----------
   addEngagement(value) {
     if (typeof value === "number" && !isNaN(value)) {
       this.engagements.push(value);
-
-      // limit size to avoid memory leak
-      if (this.engagements.length > 200) {
-        this.engagements.shift();
-      }
     }
   }
 
   getEngagements() {
-    return [...this.engagements];
+    return this.engagements;
   }
 
-  // ---- EMOTIONS ----
+  // ---------- EMOTIONS ----------
   addEmotion(emotion) {
-    if (!emotion) return;
-
-    if (!this.emotions[emotion]) {
-      this.emotions[emotion] = 0;
-    }
-    this.emotions[emotion]++;
+    if (emotion) this.emotions.push(emotion);
   }
 
-  getEmotions() {
-    return { ...this.emotions };
-  }
-
-  // ---- HINTS ----
-  addHint(type) {
-    this.hints.push({
-      type,
-      time: Date.now(),
+  getEmotionStats() {
+    const stats = {};
+    this.emotions.forEach((e) => {
+      stats[e] = (stats[e] || 0) + 1;
     });
+    return stats;
+  }
+
+  // ---------- HINTS ----------
+  addHint(reason) {
+    this.hints.push({ reason, time: Date.now() });
   }
 
   getHints() {
-    return [...this.hints];
+    return this.hints;
+  }
+
+  // ---------- QUIZ / INTERACTIONS ----------
+  addQuizResult(isCorrect) {
+    this.quizAttempts += 1;
+    isCorrect ? this.correctAnswers++ : this.wrongAnswers++;
+  }
+
+  getQuizStats() {
+    return {
+      attempts: this.quizAttempts,
+      correct: this.correctAnswers,
+      wrong: this.wrongAnswers,
+      accuracy:
+        this.quizAttempts === 0 ? 0 : this.correctAnswers / this.quizAttempts,
+    };
   }
 
   reset() {
     this.engagements = [];
-    this.emotions = {};
+    this.emotions = [];
     this.hints = [];
+    this.quizAttempts = 0;
+    this.correctAnswers = 0;
+    this.wrongAnswers = 0;
   }
 }
 

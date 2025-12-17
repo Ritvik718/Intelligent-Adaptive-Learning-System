@@ -1,41 +1,28 @@
-import React from "react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { sessionTracker } from "../utils/sessionTracker";
 
 export default function EmotionStats() {
-  const [emotions, setEmotions] = useState({});
+  const [stats, setStats] = useState({});
 
   useEffect(() => {
     const interval = setInterval(() => {
-      const data = sessionTracker.getEmotions();
-      setEmotions(data || {});
-    }, 500);
+      setStats(sessionTracker.getEmotionStats());
+    }, 1000); // refresh every second
 
     return () => clearInterval(interval);
   }, []);
 
-  const total = Object.values(emotions).reduce((sum, v) => sum + v, 0);
+  const total = Object.values(stats).reduce((a, b) => a + b, 0);
 
   if (total === 0) {
-    return (
-      <p style={{ fontSize: "14px", color: "var(--text-muted)" }}>
-        No emotion data yet
-      </p>
-    );
+    return <p className="text-slate-400">No emotion data yet</p>;
   }
 
   return (
-    <div style={{ fontSize: "14px" }}>
-      {Object.entries(emotions).map(([emotion, count]) => (
-        <div
-          key={emotion}
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginBottom: "6px",
-          }}
-        >
-          <span>{emotion}</span>
+    <div className="space-y-2">
+      {Object.entries(stats).map(([emotion, count]) => (
+        <div key={emotion} className="flex justify-between text-sm">
+          <span className="capitalize">{emotion}</span>
           <span>{((count / total) * 100).toFixed(1)}%</span>
         </div>
       ))}

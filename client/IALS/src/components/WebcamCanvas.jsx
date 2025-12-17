@@ -13,7 +13,14 @@ export default function WebcamCanvas({ onEngagementChange, onTriggerHint }) {
   const lastHintRef = useRef(0);
   const lastEmotionTime = useRef(0);
 
+  // ✅ NEW: last face seen timestamp
+  const lastFaceSeenRef = useRef(Date.now());
+
+  // UI emotion
   const [emotionState, setEmotionState] = useState("neutral");
+
+  // RAW emotion for analytics
+  const lastDetectedEmotion = useRef("neutral");
 
   useEffect(() => {
     let running = true;
@@ -22,12 +29,10 @@ export default function WebcamCanvas({ onEngagementChange, onTriggerHint }) {
     async function start() {
       const video = videoRef.current;
 
-      // Start webcam
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       video.srcObject = stream;
       await video.play();
 
-      // Wait for video readiness
       await new Promise((resolve) => {
         const check = setInterval(() => {
           if (video.videoWidth > 0 && video.videoHeight > 0) {
@@ -40,110 +45,81 @@ export default function WebcamCanvas({ onEngagementChange, onTriggerHint }) {
       faceClient = await initMediaPipe();
       model = await loadEmotionModel();
 
-      const ctx = canvasRef.current.getContext("2d");
-      canvasRef.current.width = video.videoWidth;
-      canvasRef.current.height = video.videoHeight;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
 
       async function loop() {
         if (!running) return;
 
-        ctx.drawImage(
-          video,
-          0,
-          0,
-          canvasRef.current.width,
-          canvasRef.current.height
-        );
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
         const faces = await estimateFace(faceClient, video);
+        const now = Date.now();
 
         if (faces.length > 0) {
+          lastFaceSeenRef.current = now;
+
           const face = faces[0];
 
           // Draw landmarks
           ctx.fillStyle = "lime";
           face.landmarks.forEach((p) => {
-            ctx.fillRect(
-              p.x * canvasRef.current.width,
-              p.y * canvasRef.current.height,
-              3,
-              3
-            );
+            ctx.fillRect(p.x * canvas.width, p.y * canvas.height, 3, 3);
           });
 
-          const now = Date.now();
           if (now - lastEmotionTime.current > 700) {
             lastEmotionTime.current = now;
 
-            // ---------- ML Emotion ----------
             const tensor = cropFaceToTensor(video, face.bbox, 48, 48);
             let { label, confidence } = await predictEmotion(model, tensor);
 
-            console.log("[RAW MODEL]", label, confidence?.toFixed(2));
-
-            // ---------- Geometry ----------
+            // Geometry
             const nose = face.landmarks[1];
-
-            const topLip = face.landmarks[13];
-            const bottomLip = face.landmarks[14];
-            const mouthOpen = Math.abs(topLip.y - bottomLip.y);
-
-            const leftEyeOpen = Math.abs(
-              face.landmarks[159].y - face.landmarks[145].y
+            const mouthOpen = Math.abs(
+              face.landmarks[13].y - face.landmarks[14].y
             );
-            const rightEyeOpen = Math.abs(
-              face.landmarks[386].y - face.landmarks[374].y
-            );
-            const eyesWide = (leftEyeOpen + rightEyeOpen) / 2;
+            const eyesWide =
+              (Math.abs(face.landmarks[159].y - face.landmarks[145].y) +
+                Math.abs(face.landmarks[386].y - face.landmarks[374].y)) /
+              2;
 
             const eyesCentered = Math.abs(nose.x - 0.5) < 0.15;
             const lookingAway = Math.abs(nose.x - 0.5) > 0.3;
 
-            // ---------- Heuristics (ORDER MATTERS) ----------
-
-            // Smile → happy
-            if (mouthOpen > 0.03) {
-              label = "happy";
-              confidence = 0.65;
-            }
-
-            // Surprise
+            // Heuristics
             if (mouthOpen > 0.05 && eyesWide > 0.02) {
               label = "surprise";
               confidence = 0.7;
-            }
-
-            // Disengaged
-            if (lookingAway) {
+            } else if (mouthOpen > 0.03) {
+              label = "happy";
+              confidence = 0.65;
+            } else if (lookingAway) {
               label = "sad";
               confidence = 0.7;
-            }
-
-            // Focused / neutral
-            if (mouthOpen < 0.025 && eyesCentered && confidence < 0.5) {
+            } else if (mouthOpen < 0.025 && eyesCentered) {
               label = "neutral";
               confidence = 0.6;
             }
 
-            // Collapse rare negatives
             if (["angry", "fear", "disgust"].includes(label)) {
               label = "sad";
             }
 
-            // ---------- State Update ----------
+            lastDetectedEmotion.current = label;
+
             setEmotionState((prev) => {
               if (label !== prev && confidence >= 0.45) {
-                console.log("[STATE CHANGE]", prev, "→", label);
                 return label;
               }
               return prev;
             });
           }
 
-          // ---------- CONTINUOUS EMOTION LOGGING (FIX) ----------
-          sessionTracker.addEmotion(emotionState);
+          sessionTracker.addEmotion(lastDetectedEmotion.current);
 
-          // ---------- Engagement ----------
           const emotionScore =
             emotionState === "happy" || emotionState === "surprise"
               ? 1
@@ -159,20 +135,25 @@ export default function WebcamCanvas({ onEngagementChange, onTriggerHint }) {
           onEngagementChange(avg);
           sessionTracker.addEngagement(avg);
 
-          // ---------- Hint Trigger ----------
           if (
             aggRef.current.lowSeconds >= 8 &&
-            Date.now() - lastHintRef.current > 15000
+            now - lastHintRef.current > 15000
           ) {
-            lastHintRef.current = Date.now();
+            lastHintRef.current = now;
             sessionTracker.addHint("low_engagement");
             onTriggerHint();
           }
         } else {
+          // 🚨 NO FACE DETECTED FOR > 2s → DISENGAGED
+          if (now - lastFaceSeenRef.current > 2000) {
+            lastDetectedEmotion.current = "sad";
+            setEmotionState("sad");
+            sessionTracker.addEmotion("sad");
+          }
+
           const avg = aggRef.current.pushFrame(0.1);
           onEngagementChange(avg);
           sessionTracker.addEngagement(avg);
-          sessionTracker.addEmotion("sad");
         }
 
         requestAnimationFrame(loop);
@@ -187,7 +168,6 @@ export default function WebcamCanvas({ onEngagementChange, onTriggerHint }) {
     };
   }, [onEngagementChange, onTriggerHint, emotionState]);
 
-  // UI label mapping
   const displayState =
     emotionState === "happy"
       ? "engaged"
@@ -198,56 +178,21 @@ export default function WebcamCanvas({ onEngagementChange, onTriggerHint }) {
       : "disengaged";
 
   return (
-    <div
-      style={{
-        position: "relative",
-        width: "640px",
-        height: "480px",
-        borderRadius: "10px",
-        overflow: "hidden",
-        background: "#000",
-      }}
-    >
+    <div className="relative w-full aspect-video overflow-hidden rounded-lg bg-black">
       <video
         ref={videoRef}
         autoPlay
         muted
         playsInline
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          transform: "scaleX(-1)",
-        }}
+        className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
       />
 
       <canvas
         ref={canvasRef}
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-          pointerEvents: "none",
-        }}
+        className="absolute inset-0 w-full h-full pointer-events-none scale-x-[-1]"
       />
 
-      <div
-        style={{
-          position: "absolute",
-          bottom: "10px",
-          left: "10px",
-          background: "rgba(0,0,0,0.6)",
-          color: "#fff",
-          padding: "6px 10px",
-          borderRadius: "6px",
-          fontSize: "14px",
-        }}
-      >
+      <div className="absolute bottom-2 left-2 bg-black/60 text-white px-3 py-1 rounded-md text-xs">
         State: <b>{displayState}</b>
       </div>
     </div>
