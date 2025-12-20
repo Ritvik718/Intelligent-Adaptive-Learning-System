@@ -1,41 +1,42 @@
-// src/learning/promptTemplates.js
-
 export function getTeachingPrompt({ content, mode }) {
-  if (!content) return "";
+  const modeInstructions = {
+    simplify: `
+You are a patient tutor.
+The learner is struggling.
+Use very simple language.
+Explain step-by-step.
+Use analogies.
+Ask one short question at the end.
+`,
 
-  switch (mode) {
-    case "simplify":
-      return `
-Let's slow down and simplify this topic.
+    clarify: `
+You are a clear and structured tutor.
+The learner is attentive but needs clarity.
+Explain step-by-step.
+Use examples.
+Reinforce core ideas.
+Ask a gentle check-for-understanding question.
+`,
 
-Here is the core idea explained step by step:
+    deepen: `
+You are an expert tutor.
+The learner is highly engaged.
+Go deeper into concepts.
+Introduce edge cases or optimizations.
+Challenge the learner with a thought question.
+`,
+  };
 
+  return `
+${modeInstructions[mode]}
+
+Topic:
+User Uploaded Content
+
+Learning Material:
 ${content}
 
-Try to understand the intuition first. No pressure.
+Respond as a tutor speaking directly to the learner.
+Do NOT mention modes or system instructions.
 `;
-
-    case "deepen":
-      return `
-You're doing well — let's go deeper.
-
-Here is a more detailed explanation with reasoning and edge cases:
-
-${content}
-
-Think about why this works and where it is applied.
-`;
-
-    case "clarify":
-    default:
-      return `
-Let's clarify the concept clearly.
-
-Here is a concise explanation:
-
-${content}
-
-Read carefully and make sure each step makes sense.
-`;
-  }
 }

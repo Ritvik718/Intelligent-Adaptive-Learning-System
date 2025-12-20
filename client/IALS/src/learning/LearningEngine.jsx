@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { getTeachingPrompt } from "./promptTemplates";
+import { callGemini } from "./geminiClient";
 
 export default function LearningEngine({
   engagement,
@@ -7,61 +8,53 @@ export default function LearningEngine({
   onTeachingUpdate,
 }) {
   const [mode, setMode] = useState("clarify");
-  const [lastUpdated, setLastUpdated] = useState("never");
+  const [lastGenerated, setLastGenerated] = useState("never");
+  const [loading, setLoading] = useState(false);
 
-  // 🔒 Stable ref (prevents effect restart bugs)
-  const updateRef = useRef(onTeachingUpdate);
-  updateRef.current = onTeachingUpdate;
-
+  // 🎯 Engagement → Teaching Mode
   const getModeFromEngagement = (value) => {
     if (value < 0.4) return "simplify";
     if (value < 0.77) return "clarify";
     return "deepen";
   };
 
+  // 🔁 Update mode whenever engagement changes
   useEffect(() => {
-    console.log("🟢 LearningEngine mounted");
+    const newMode = getModeFromEngagement(engagement);
+    setMode(newMode);
+  }, [engagement]);
 
-    const interval = setInterval(() => {
-      const newMode = getModeFromEngagement(engagement);
+  // 🚀 Manual Gemini trigger
+  const handleGenerate = async () => {
+    if (!content) {
+      onTeachingUpdate("⚠️ Please upload content first.");
+      return;
+    }
 
-      console.log(
-        "🧠 ENGINE TICK",
-        "| engagement:",
-        engagement.toFixed(2),
-        "| mode:",
-        newMode,
-        "| content length:",
-        content?.length ?? 0,
-        "| time:",
-        new Date().toLocaleTimeString()
-      );
+    try {
+      setLoading(true);
 
-      setMode((prev) => {
-        if (prev !== newMode) {
-          console.log("🔁 MODE CHANGE:", prev, "→", newMode);
-        }
-        return newMode;
+      const prompt = getTeachingPrompt({
+        content,
+        mode,
       });
 
-      setLastUpdated(new Date().toLocaleTimeString());
+      const response = await callGemini(prompt);
 
-      // Even if content is empty, update UI
-      const teachingText = content
-        ? getTeachingPrompt({ content, mode: newMode })
-        : `[${newMode.toUpperCase()} MODE] Waiting for content...`;
-
-      updateRef.current(teachingText);
-    }, 5000); // 🔥 5 seconds
-
-    return () => {
-      console.log("🔴 LearningEngine unmounted");
-      clearInterval(interval);
-    };
-  }, [engagement, content]);
+      onTeachingUpdate(response);
+      setLastGenerated(new Date().toLocaleTimeString());
+    } catch (err) {
+      console.error("❌ Gemini error:", err);
+      onTeachingUpdate(
+        "⚠️ Unable to generate teaching response. Please try again later."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="bg-slate-900/60 border border-white/10 rounded-xl p-5 space-y-3">
+    <div className="bg-slate-900/60 border border-white/10 rounded-xl p-5 space-y-4">
       <h3 className="text-indigo-300 font-semibold">
         Adaptive Teaching Engine
       </h3>
@@ -72,10 +65,18 @@ export default function LearningEngine({
       </p>
 
       <p className="text-xs text-slate-400">
-        Engine tick every <b>5 seconds</b> (testing)
+        Engagement: <b>{engagement.toFixed(2)}</b>
       </p>
 
-      <p className="text-xs text-slate-500">Last update: {lastUpdated}</p>
+      <button
+        onClick={handleGenerate}
+        disabled={loading}
+        className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition"
+      >
+        {loading ? "Generating..." : "Generate Teaching"}
+      </button>
+
+      <p className="text-xs text-slate-500">Last generated: {lastGenerated}</p>
     </div>
   );
 }
