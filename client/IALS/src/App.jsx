@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 import Landing from "./pages/Landing";
 import Learning from "./pages/Learning";
 import DashboardPage from "./pages/DashboardPage";
+import VoiceTutor from "./pages/VoiceTutor";
 
 import "./App.css";
 
@@ -26,6 +27,10 @@ export default function App() {
           <Link to="/dashboard" className="hover:text-indigo-400 transition">
             Dashboard
           </Link>
+
+          <Link to="/voice" className="hover:text-indigo-400 transition">
+            Voice Tutor
+          </Link>
         </div>
       </nav>
 
@@ -34,6 +39,7 @@ export default function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/learning" element={<Learning />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/voice" element={<VoiceTutor />} />
       </Routes>
     </BrowserRouter>
   );

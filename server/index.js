@@ -1,45 +1,101 @@
 import express from "express";
 import cors from "cors";
-import bodyParser from "body-parser";
-import fs from "fs";
+import multer from "multer";
+import fetch from "node-fetch";
+import dotenv from "dotenv";
+import FormData from "form-data";
+
+dotenv.config();
 
 const app = express();
-const PORT = 5001;
+const upload = multer();
 
-app.use(cors());
-app.use(bodyParser.json());
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type"],
+  }),
+);
 
-// temporary in-memory storage (you can replace this with a DB)
-let sessionData = [];
+app.use(express.json());
 
-// POST endpoint for engagement/emotion logs
-app.post("/api/log", (req, res) => {
-  const { userId, timestamp, emotion, engagement } = req.body;
+console.log("Sarvam key exists:", !!process.env.SARVAM_API_KEY);
 
-  if (!userId || !timestamp)
-    return res.status(400).json({ message: "Invalid log payload" });
+/* ====================================
+   🎙 SARVAM STT
+==================================== */
+app.post("/api/sarvam-stt", upload.single("audio"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No audio uploaded" });
+    }
 
-  sessionData.push({ userId, timestamp, emotion, engagement });
+    const formData = new FormData();
+    formData.append("file", req.file.buffer, {
+      filename: "audio.webm",
+      contentType: "audio/webm",
+    });
 
-  // simple adaptive rule
-  let action = "continue";
-  if (engagement < 0.4) action = "show_hint";
-  else if (engagement > 0.9) action = "increase_difficulty";
+    formData.append("model", "saarika:v1");
 
-  res.json({ status: "ok", action });
+    const response = await fetch(
+      "https://api.sarvam.ai/v1/audio/transcriptions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.SARVAM_API_KEY}`,
+        },
+        body: formData,
+      },
+    );
+
+    const data = await response.json();
+    console.log("Sarvam STT response:", data);
+
+    res.json(data);
+  } catch (err) {
+    console.error("STT error:", err);
+    res.status(500).json({ error: "STT failed" });
+  }
 });
 
-// GET endpoint to view all logs
-app.get("/api/logs", (req, res) => {
-  res.json(sessionData);
+/* ====================================
+   🔊 SARVAM TTS
+==================================== */
+app.post("/api/sarvam-tts", async (req, res) => {
+  try {
+    const { text, language } = req.body;
+
+    const response = await fetch("https://api.sarvam.ai/v1/audio/speech", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.SARVAM_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "bulbul:v1",
+        input: text,
+        voice: language || "en-IN",
+      }),
+    });
+
+    const audioBuffer = await response.arrayBuffer();
+
+    res.set({
+      "Content-Type": "audio/mpeg",
+    });
+
+    res.send(Buffer.from(audioBuffer));
+  } catch (err) {
+    console.error("TTS error:", err);
+    res.status(500).json({ error: "TTS failed" });
+  }
 });
 
-// Save logs periodically
-setInterval(() => {
-  fs.writeFileSync(
-    "./data/sessionLogs.json",
-    JSON.stringify(sessionData, null, 2)
-  );
-}, 30000);
-
-app.listen(PORT, () => console.log(`✅ IALS Server running on port ${PORT}`));
+/* ====================================
+   SERVER START
+==================================== */
+app.listen(5001, () => {
+  console.log("Server running on http://localhost:5001");
+});
