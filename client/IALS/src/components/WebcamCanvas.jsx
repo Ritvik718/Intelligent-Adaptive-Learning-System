@@ -9,17 +9,18 @@ export default function WebcamCanvas({ onEngagementChange, onTriggerHint }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
 
-  const aggRef = useRef(new EngagementAggregator({ windowSeconds: 5 }));
+  // 🔥 More sensitive window (3s instead of 5s)
+  const aggRef = useRef(new EngagementAggregator({ windowSeconds: 3 }));
+
   const lastHintRef = useRef(0);
   const lastEmotionTime = useRef(0);
-
-  // ✅ NEW: last face seen timestamp
   const lastFaceSeenRef = useRef(Date.now());
 
-  // UI emotion
-  const [emotionState, setEmotionState] = useState("neutral");
+  const previousEmotion = useRef("neutral");
+  const prevMouth = useRef(0);
+  const prevEyes = useRef(0);
 
-  // RAW emotion for analytics
+  const [emotionState, setEmotionState] = useState("neutral");
   const lastDetectedEmotion = useRef("neutral");
 
   useEffect(() => {
@@ -61,7 +62,6 @@ export default function WebcamCanvas({ onEngagementChange, onTriggerHint }) {
 
         if (faces.length > 0) {
           lastFaceSeenRef.current = now;
-
           const face = faces[0];
 
           // Draw landmarks
@@ -70,17 +70,18 @@ export default function WebcamCanvas({ onEngagementChange, onTriggerHint }) {
             ctx.fillRect(p.x * canvas.width, p.y * canvas.height, 3, 3);
           });
 
-          if (now - lastEmotionTime.current > 700) {
+          // 🔥 Faster emotion update (300ms)
+          if (now - lastEmotionTime.current > 300) {
             lastEmotionTime.current = now;
 
             const tensor = cropFaceToTensor(video, face.bbox, 48, 48);
             let { label, confidence } = await predictEmotion(model, tensor);
 
-            // Geometry
             const nose = face.landmarks[1];
             const mouthOpen = Math.abs(
-              face.landmarks[13].y - face.landmarks[14].y
+              face.landmarks[13].y - face.landmarks[14].y,
             );
+
             const eyesWide =
               (Math.abs(face.landmarks[159].y - face.landmarks[145].y) +
                 Math.abs(face.landmarks[386].y - face.landmarks[374].y)) /
@@ -89,10 +90,18 @@ export default function WebcamCanvas({ onEngagementChange, onTriggerHint }) {
             const eyesCentered = Math.abs(nose.x - 0.5) < 0.15;
             const lookingAway = Math.abs(nose.x - 0.5) > 0.3;
 
+            // 🔥 Micro-expression boost
+            const microChange =
+              Math.abs(mouthOpen - prevMouth.current) > 0.015 ||
+              Math.abs(eyesWide - prevEyes.current) > 0.01;
+
+            prevMouth.current = mouthOpen;
+            prevEyes.current = eyesWide;
+
             // Heuristics
             if (mouthOpen > 0.05 && eyesWide > 0.02) {
               label = "surprise";
-              confidence = 0.7;
+              confidence = 0.75;
             } else if (mouthOpen > 0.03) {
               label = "happy";
               confidence = 0.65;
@@ -108,10 +117,21 @@ export default function WebcamCanvas({ onEngagementChange, onTriggerHint }) {
               label = "sad";
             }
 
+            // 🔥 Momentum boost
+            if (label !== previousEmotion.current) {
+              confidence += 0.1;
+            }
+
+            if (microChange) {
+              confidence += 0.1;
+            }
+
+            previousEmotion.current = label;
             lastDetectedEmotion.current = label;
 
+            // 🔥 Lower confidence threshold (0.35)
             setEmotionState((prev) => {
-              if (label !== prev && confidence >= 0.45) {
+              if (label !== prev && confidence >= 0.35) {
                 return label;
               }
               return prev;
@@ -120,16 +140,17 @@ export default function WebcamCanvas({ onEngagementChange, onTriggerHint }) {
 
           sessionTracker.addEmotion(lastDetectedEmotion.current);
 
+          // 🔥 Emotion more sensitive (0.7 weight)
           const emotionScore =
             emotionState === "happy" || emotionState === "surprise"
               ? 1
               : emotionState === "neutral"
-              ? 0.6
-              : 0.3;
+                ? 0.6
+                : 0.3;
 
           const gazeScore = Math.abs(face.landmarks[1].x - 0.5) < 0.25 ? 1 : 0;
 
-          const instantEng = 0.6 * emotionScore + 0.4 * gazeScore;
+          const instantEng = 0.7 * emotionScore + 0.3 * gazeScore;
           const avg = aggRef.current.pushFrame(instantEng);
 
           onEngagementChange(avg);
@@ -144,7 +165,7 @@ export default function WebcamCanvas({ onEngagementChange, onTriggerHint }) {
             onTriggerHint();
           }
         } else {
-          // 🚨 NO FACE DETECTED FOR > 2s → DISENGAGED
+          // 🚨 No face detected for >2s
           if (now - lastFaceSeenRef.current > 2000) {
             lastDetectedEmotion.current = "sad";
             setEmotionState("sad");
@@ -172,10 +193,10 @@ export default function WebcamCanvas({ onEngagementChange, onTriggerHint }) {
     emotionState === "happy"
       ? "engaged"
       : emotionState === "surprise"
-      ? "surprise"
-      : emotionState === "neutral"
-      ? "focused"
-      : "disengaged";
+        ? "surprise"
+        : emotionState === "neutral"
+          ? "focused"
+          : "disengaged";
 
   return (
     <div className="relative w-full aspect-video overflow-hidden rounded-lg bg-black">
