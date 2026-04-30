@@ -16,7 +16,7 @@ export async function callGemini(input) {
       ];
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
     {
       method: "POST",
       headers: {
@@ -31,8 +31,9 @@ export async function callGemini(input) {
   const data = await response.json();
 
   if (!response.ok) {
-    console.error("Gemini API error:", data);
-    throw new Error("Gemini API request failed");
+    console.error("❌ Gemini API error details:", data.error || data);
+    const errorMsg = data.error?.message || "Gemini API request failed";
+    throw new Error(errorMsg);
   }
 
   return (
