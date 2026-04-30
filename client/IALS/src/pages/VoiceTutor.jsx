@@ -164,9 +164,8 @@ export default function VoiceTutor() {
           {messages.map((msg, idx) => (
             <div
               key={idx}
-              className={`p-8 rounded-3xl border border-white/10 ${
-                msg.type === "ai" ? "bg-slate-800/60" : "bg-indigo-600/10"
-              }`}
+              className={`p-8 rounded-3xl border border-white/10 ${msg.type === "ai" ? "bg-slate-800/60" : "bg-indigo-600/10"
+                }`}
             >
               <div className="text-xs uppercase tracking-wider text-slate-400 mb-4">
                 {msg.type === "original" && "Original Speech"}

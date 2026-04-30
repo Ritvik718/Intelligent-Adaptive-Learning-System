@@ -5,17 +5,51 @@ import uvicorn
 import os
 import tempfile
 import json
+import re
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 SARVAM_KEY = os.getenv("SARVAM_API_KEY")
 OUTPUT_DIR = "outputs"
 
 if not SARVAM_KEY:
-    raise Exception("SARVAM_API_KEY not set")
+    raise Exception("SARVAM_API_KEY not set in .env or environment")
 
 client = SarvamAI(api_subscription_key=SARVAM_KEY)
 
 app = FastAPI()
+
+def clean_ai_response(text: str, tag: str = "result") -> str:
+    """Robustly extracts the result by stripping thinking blocks FIRST."""
+    if not text:
+        return ""
+    
+    # 1. PRE-CLEAN: Remove all <think> blocks immediately to prevent meta-talk confusion
+    # This handles both closed and unclosed <think> blocks.
+    text = re.sub(r'<think.*?>.*?(?:</think>|$)', '', text, flags=re.DOTALL | re.IGNORECASE)
+    
+    # 2. EXTRACT: Look for the specific tag in the already-stripped text
+    pattern = rf'<{tag}>(.*?)</{tag}>'
+    match = re.search(pattern, text, flags=re.DOTALL | re.IGNORECASE)
+    if match:
+        cleaned = match.group(1).strip()
+    else:
+        # Fallback: Check for an unclosed tag
+        pattern = rf'<{tag}>(.*)'
+        match = re.search(pattern, text, flags=re.DOTALL | re.IGNORECASE)
+        if match:
+            cleaned = match.group(1).strip()
+        else:
+            # Last resort: if it's the main result, just take the whole remaining text
+            cleaned = text.strip() if tag == "result" else ""
+
+    # 3. FINAL POLISH: Remove any stray HTML-like tags and quotes
+    cleaned = re.sub(r'</?.*?>', '', cleaned)
+    cleaned = cleaned.strip().strip('"').strip("'").strip()
+    return cleaned
 
 app.add_middleware(
     CORSMiddleware,
@@ -34,83 +68,56 @@ async def speech_to_text(
     language: str = Form("en-IN"),
 ):
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".wav") as tmp:
             tmp.write(await file.read())
-            tmp_path = tmp.name
+            tmp.seek(0)
+
+            # ==========================
+            # STEP 1: ORIGINAL TRANSCRIPT (STT) - Synchronous for speed
+            # ==========================
+
+            response = client.speech_to_text.transcribe(
+                file=tmp,
+                model="saaras:v3",
+                language_code=language
+            )
+
+        original_text = response.transcript
 
         # ==========================
-        # STEP 1: ORIGINAL TRANSCRIPT
+        # STEP 2: COMBINED AI RESPONSE (TRANSLATION + TUTOR)
         # ==========================
 
-        job = client.speech_to_text_job.create_job(
-            model="saaras:v3",
-            language_code=language,
-            with_diarization=False,
-        )
+        prompt = f"""
+        The user said: "{original_text}"
 
-        job.upload_files(file_paths=[tmp_path])
-        job.start()
-        job.wait_until_complete()
-
-        if job.is_failed():
-            return {"error": "Transcription failed"}
-
-        job_output_dir = Path(OUTPUT_DIR) / f"job_{job.job_id}"
-        job_output_dir.mkdir(parents=True, exist_ok=True)
-        job.download_outputs(output_dir=str(job_output_dir))
-
-        json_files = list(job_output_dir.glob("*.json"))
-        if not json_files:
-            return {"error": "Transcript not found"}
-
-        with open(json_files[0], "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        original_text = data.get("transcript", "")
-
-        # ==========================
-        # STEP 2: TRANSLATE TO ENGLISH
-        # ==========================
-
-        translation_prompt = f"""
-        Translate the following text to English.
-        Only return the translated English text.
-
-        Text:
-        {original_text}
+        Please do two things:
+        1. Translate the user's text to English inside <translation> tags.
+        2. Provide a helpful, conversational tutor response in English inside <result> tags.
         """
 
-        translation_messages = [
-            {"role": "system", "content": "You are a professional translator."},
-            {"role": "user", "content": translation_prompt},
-        ]
-
-        translation_response = client.chat.completions(messages=translation_messages)
-        translated_text = translation_response.choices[0].message.content
-
-        # ==========================
-        # STEP 3: AI RESPONSE
-        # ==========================
-
-        tutor_messages = [
+        messages = [
             {
                 "role": "system",
-                "content": "You are a helpful AI tutor. Respond clearly and conversationally in English.",
+                "content": "You are a helpful AI Voice Tutor. You receive multilingual transcripts and provide English translations and educational responses.",
             },
-            {
-                "role": "user",
-                "content": translated_text,
-            },
+            {"role": "user", "content": prompt},
         ]
 
-        tutor_response = client.chat.completions(messages=tutor_messages)
-        ai_reply = tutor_response.choices[0].message.content
+        # Single LLM call for both tasks
+        response = client.chat.completions(messages=messages)
+        raw_content = response.choices[0].message.content
+
+        # Extract the two parts
+        translated_text = clean_ai_response(raw_content, tag="translation")
+        ai_reply = clean_ai_response(raw_content, tag="result")
 
         return {
             "original_text": original_text,
-            "translated_text": translated_text,
-            "ai_response": ai_reply,
+            "translated_text": translated_text if translated_text else "Translation unavailable",
+            "ai_response": ai_reply if ai_reply else "Response unavailable",
         }
+
 
     except Exception as e:
         return {"error": str(e)}
