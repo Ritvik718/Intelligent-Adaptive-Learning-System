@@ -16,7 +16,7 @@ let model = null;
 export async function loadEmotionModel() {
   if (model) return model;
 
-  model = await tf.loadLayersModel("/src/assets/model/model.json");
+  model = await tf.loadLayersModel("/model/model.json");
   console.log("✅ Emotion model loaded successfully");
 
   return model;
