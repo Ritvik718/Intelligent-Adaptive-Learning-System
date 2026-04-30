@@ -85,7 +85,8 @@ export default function VoiceTutor() {
     formData.append("file", audioBlob);
     formData.append("language", language);
 
-    const response = await fetch("http://localhost:8000/stt", {
+    const backendUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+    const response = await fetch(`${backendUrl}/stt`, {
       method: "POST",
       body: formData,
     });
